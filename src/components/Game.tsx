@@ -10,7 +10,7 @@ const phrases = [
 ];
 
 export const Game: React.FC = () => {
-  const [index, setIndex] = useState(0); // 現在の出題インデックス
+  const [index, setIndex] = useState(0);
   const [target, setTarget] = useState(phrases[0]);
   const [result, setResult] = useState('');
   const [status, setStatus] = useState<'waiting' | 'listening' | 'done'>('waiting');
@@ -35,9 +35,10 @@ export const Game: React.FC = () => {
     setAudioUrl(null);
     audioChunksRef.current = [];
 
-    // 録音開始
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mediaRecorder = new MediaRecorder(stream);
+    const mediaRecorder = new MediaRecorder(stream, {
+      mimeType: 'audio/webm;codecs=opus'
+    });
     mediaRecorderRef.current = mediaRecorder;
 
     mediaRecorder.ondataavailable = (e) => {
@@ -54,7 +55,6 @@ export const Game: React.FC = () => {
 
     mediaRecorder.start();
 
-    // 音声認識開始
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert('このブラウザはWeb Speech APIに対応していません。');
@@ -67,16 +67,25 @@ export const Game: React.FC = () => {
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = event.results[0][0].transcript;
-      setResult(transcript);
-      setStatus('done');
+      const transcript = event.results[0][0].transcript?.trim() ?? '';
+
+      if (transcript === '') {
+        console.log('❌ 音声認識に失敗（空文字）');
+        setResult('');
+        setStatus('waiting');
+      } else {
+        console.log('✅ 認識:', transcript);
+        setResult(transcript);
+        setStatus('done');
+      }
 
       recognition.stop();
       mediaRecorder.stop();
       stream.getTracks().forEach(track => track.stop());
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (e) => {
+      console.error('🛑 音声認識エラー:', e.error);
       setStatus('waiting');
       recognition.stop();
       mediaRecorder.stop();
@@ -84,21 +93,6 @@ export const Game: React.FC = () => {
     };
 
     recognition.start();
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-  const transcript = event.results[0][0].transcript?.trim() ?? '';
-  if (transcript === '') {
-    // 認識結果なしの場合はwaitingに戻す
-    setResult('');
-    setStatus('waiting');
-  } else {
-    setResult(transcript);
-    setStatus('done');
-  }
-
-  recognition.stop();
-  mediaRecorder.stop();
-  stream.getTracks().forEach(track => track.stop());
-};
   };
 
   const handleNext = () => {
@@ -120,7 +114,7 @@ export const Game: React.FC = () => {
 
       {status === 'done' && (
         <div style={{ marginTop: '1rem' }}>
-          <p>あなたの発音: <strong>{ isCorrect ? target : result}</strong></p>
+          <p>あなたの発音: <strong>{isCorrect ? target : result}</strong></p>
           <p style={{ color: isCorrect ? 'green' : 'red' }}>
             {isCorrect ? '正解！次へ進んでね。' : 'ちょっと違うかも…'}
           </p>
@@ -132,7 +126,7 @@ export const Game: React.FC = () => {
           )}
 
           {isCorrect && audioUrl && (
-            <div style={{marginTop: '1rem' }}>
+            <div style={{ marginTop: '1rem' }}>
               <audio controls src={audioUrl} />
             </div>
           )}
