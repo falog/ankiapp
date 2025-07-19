@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import speech from '@google-cloud/speech';
+import { SpeechClient } from '@google-cloud/speech';
 
-const client = new speech.SpeechClient();
+const raw = Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64!, 'base64').toString('utf-8');
+const credentials = JSON.parse(raw);
+
+const client = new SpeechClient({
+  projectId: credentials.project_id,
+  credentials,
+});
 
 export async function POST(req: NextRequest) {
   const body = await req.arrayBuffer();
