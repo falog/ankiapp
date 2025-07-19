@@ -2,18 +2,46 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 const phrases = [
-  'Hello, how are you?',
-  'I like to eat apples.',
-  'Can you speak English?',
-  'This is a beautiful day.',
-  "Let's practice speaking."
+  "I really like it.",
+  "Where are you from?",
+  "Let’s have lunch together.",
+  "Do you have a reservation?",
+  "How long will it take?",
+  "I thought it was fine.",
+  "Would you like some coffee?",
+  "Please speak more clearly.",
+  "She lives near here.",
+  "They’re waiting for us.",
+  "I’d rather stay home.",
+  "There’s a lot of traffic.",
+  "I forgot my umbrella.",
+  "I have a little brother.",
+  "Let’s go shopping.",
+  "Can you hear me clearly?",
+  "It’s hard to believe.",
+  "Let’s meet later.",
+  "I’m learning English.",
+  "He works at a law firm.",
+  "Let me think about it.",
+  "I visited my friend yesterday.",
+  "That’s a great idea!",
+  "This is quite different.",
+  "Please leave a message.",
+  "It’s a beautiful day.",
+  "Do you live nearby?",
+  "They’ll arrive at noon.",
+  "Let’s make a reservation.",
+  "This place is really clean."
 ];
+
+
 
 export const Game: React.FC = () => {
   const [index, setIndex] = useState(0);
   const [target, setTarget] = useState(phrases[0]);
   const [result, setResult] = useState('');
-  const [status, setStatus] = useState<'waiting' | 'listening' | 'done'>('waiting');
+  const [confidence, setConfidence] = useState(0);
+  const [status, setStatus] = useState<'waiting' | 'listening' | 'done' | 'loading'>('waiting');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -22,23 +50,50 @@ export const Game: React.FC = () => {
   const normalize = (text: string) =>
     text.toLowerCase().replace(/[.,!?'"‘’“”]/g, '').replace(/\s+/g, ' ').trim();
 
-  useEffect(() => {
-    setTarget(phrases[index]);
-    setResult('');
-    setStatus('waiting');
-    setAudioUrl(null);
-  }, [index]);
+
+useEffect(() => {
+  setTarget(phrases[index]);
+  setResult('');
+  setConfidence(0);
+  setStatus('waiting');
+  setAudioUrl(null);
+}, [index]);
+
+
+  const handleTTS = async () => {
+    setStatus('loading');
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: target }),
+      });
+
+      if (!res.ok) throw new Error('TTS failed');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.play();
+    } catch (e) {
+      alert('TTSエラー: ' + e);
+    } finally {
+      setStatus('waiting');
+    }
+  };
 
   const handleStart = async () => {
     setStatus('listening');
     setResult('');
+    setConfidence(0);
     setAudioUrl(null);
     audioChunksRef.current = [];
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'audio/webm;codecs=opus'
+      mimeType: 'audio/webm;codecs=opus',
     });
+
     mediaRecorderRef.current = mediaRecorder;
 
     mediaRecorder.ondataavailable = (e) => {
@@ -47,76 +102,76 @@ export const Game: React.FC = () => {
       }
     };
 
-    mediaRecorder.onstop = () => {
+    mediaRecorder.onstop = async () => {
       const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-      const url = URL.createObjectURL(blob);
-      setAudioUrl(url);
+      setAudioUrl(URL.createObjectURL(blob));
+
+      setStatus('loading');
+      try {
+        const buffer = await blob.arrayBuffer();
+        const res = await fetch('/api/stt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'audio/webm' },
+          body: buffer,
+        });
+
+        if (!res.ok) throw new Error('STT failed');
+
+        const data = await res.json();
+        const transcript = data.response?.results?.[0]?.alternatives?.[0]?.transcript || '';
+        const conf = data.response?.results?.[0]?.alternatives?.[0]?.confidence ?? 0;
+
+        console.log('STT 結果:', transcript, conf);
+
+        setResult(transcript);
+        setConfidence(conf);
+        setStatus('done');
+      } catch (err) {
+        console.error('STTエラー:', err);
+        alert('音声認識に失敗しました。');
+        setStatus('waiting');
+      }
     };
 
     mediaRecorder.start();
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert('このブラウザはWeb Speech APIに対応していません。');
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = event.results[0][0].transcript?.trim() ?? '';
-
-      if (transcript === '') {
-        console.log('❌ 音声認識に失敗（空文字）');
-        setResult('');
-        setStatus('waiting');
-      } else {
-        console.log('✅ 認識:', transcript);
-        setResult(transcript);
-        setStatus('done');
-      }
-
-      recognition.stop();
+    setTimeout(() => {
       mediaRecorder.stop();
-      stream.getTracks().forEach(track => track.stop());
-    };
-
-    recognition.onerror = (e) => {
-      console.error('🛑 音声認識エラー:', e.error);
-      setStatus('waiting');
-      recognition.stop();
-      mediaRecorder.stop();
-      stream.getTracks().forEach(track => track.stop());
-    };
-
-    recognition.start();
+      stream.getTracks().forEach((track) => track.stop());
+    }, 3000); // 3秒録音
   };
 
   const handleNext = () => {
     setIndex((prev) => (prev + 1) % phrases.length);
   };
 
-  const isCorrect = normalize(result) === normalize(target);
+  const isCorrect = normalize(result) === normalize(target) && confidence >= 0.90;
 
   return (
     <div style={{ textAlign: 'center' }}>
       <h2>発音してみよう！</h2>
       <p style={{ fontSize: '1.5rem' }}>{target}</p>
 
+      <div style={{ margin: '1rem' }}>
+        <button onClick={handleTTS} style={buttonStyle} disabled={status === 'loading'}>
+          ▶️ 見本を聴く
+        </button>
+      </div>
+
       {status !== 'listening' && (
-        <button onClick={handleStart} style={buttonStyle}>
+        <button onClick={handleStart} style={buttonStyle} disabled={status === 'loading'}>
           🎤 発音スタート
         </button>
       )}
 
       {status === 'done' && (
         <div style={{ marginTop: '1rem' }}>
-          <p>あなたの発音: <strong>{isCorrect ? target : result}</strong></p>
+          <p>
+            あなたの発音: <strong>{result}</strong>
+          </p>
+          <p>発音スコア: {(confidence * 100).toFixed(1)}%</p>
           <p style={{ color: isCorrect ? 'green' : 'red' }}>
-            {isCorrect ? '正解！次へ進んでね。' : 'ちょっと違うかも…'}
+            {isCorrect ? '正解！次へ進んでね。' : '発音の質が足りないか、内容が違うよ！'}
           </p>
 
           {isCorrect && (
@@ -125,7 +180,7 @@ export const Game: React.FC = () => {
             </button>
           )}
 
-          {isCorrect && audioUrl && (
+          {audioUrl && (
             <div style={{ marginTop: '1rem' }}>
               <audio controls src={audioUrl} />
             </div>

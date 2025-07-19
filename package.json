@@ -9,7 +9,11 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google-cloud/speech": "^7.2.0",
+    "@google-cloud/text-to-speech": "^6.2.0",
+    "@react-native-voice/voice": "^3.2.4",
     "@types/dom-speech-recognition": "^0.0.6",
+    "dotenv": "^17.2.0",
     "next": "15.4.1",
     "react": "19.1.0",
     "react-dom": "19.1.0"
