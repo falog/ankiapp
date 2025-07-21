@@ -1,5 +1,8 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
+import AudioPlayer from 'react-h5-audio-player';
+import 'react-h5-audio-player/lib/styles.css';
+
 
 const phrases = [
   "I really like it.",
@@ -180,11 +183,25 @@ useEffect(() => {
             </button>
           )}
 
-          {audioUrl && (
-            <div style={{ marginTop: '1rem' }}>
-              <audio controls src={audioUrl} />
-            </div>
-          )}
+{audioUrl && (
+  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+    <AudioPlayer
+      src={audioUrl}
+      showJumpControls={false}
+      showDownloadProgress={false}
+      customVolumeControls={[]}
+      customAdditionalControls={[]}
+      style={{
+        borderRadius: '10px',
+        width: '100%',
+        maxWidth: '500px',
+        boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
+      }}
+    />
+  </div>
+)}
+
+
         </div>
       )}
     </div>
